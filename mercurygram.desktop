@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Mercurygram
+Comment=Telegram (Mercurygram) via Android Translation Layer
+Exec=mercurygram.sh %u
+Icon=mercurygram.png
+Terminal=false
+Type=Application
+X-Ubuntu-Touch=true
+X-Lomiri-Touch=true

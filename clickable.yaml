@@ -1,0 +1,94 @@
+clickable_minimum_required: 8.0.0
+builder: custom
+framework: ubuntu-touch-24.04-2.x
+kill: android-translation-layer
+skip_review: true
+restrict_arch: arm64
+
+# art_standalone only supports self-hosted (native) builds, so this project
+# must build inside a NATIVE arm64 container. On an x86_64 host docker runs
+# it through qemu-user (needs qemu-user-static + binfmt_misc registered).
+docker_image: docker.io/clickable/arm64-ut24.04-2.x-arm64
+
+build:
+  - ${ROOT}/build.sh
+
+dependencies_host:
+  - autoconf
+  - automake
+  - bison
+  - ca-certificates-java
+  - clang
+  - cmake
+  - curl
+  - flex
+  - generate-ninja
+  - git
+  - gperf
+  - libtool
+  - lld
+  - meson
+  - ninja-build
+  - openjdk-17-jdk-headless
+  - patch
+  - pkg-config
+  - python-is-python3
+  - python3
+  - rsync
+  - ruby
+  - unifdef
+  - unzip
+  - xz-utils
+  - zip
+
+dependencies_target:
+  # atlas / android_translation_layer
+  - libasound2-dev
+  - libavcodec-dev
+  - libswscale-dev
+  - libdrm-dev
+  - libegl-dev
+  - libgl-dev
+  - libgles-dev
+  - libglib2.0-dev
+  - libgraphene-1.0-dev
+  - libgstreamer1.0-dev
+  - libgstreamer-plugins-base1.0-dev
+  - libgudev-1.0-dev
+  - libopenxr-dev
+  - libportal-dev
+  - libsqlite3-dev
+  - libvulkan-dev
+  - libwayland-dev
+  - wayland-protocols
+  - libfontconfig-dev
+  - libmaliit-glib-dev
+  - libxkbcommon-dev
+  - libgbm-dev
+  # skia subproject (system libraries, see atlas/subprojects/packagefiles/skia)
+  - libexpat1-dev
+  - libfreetype-dev
+  - libharfbuzz-dev
+  - libjpeg-dev
+  - libpng-dev
+  - libwebp-dev
+  - zlib1g-dev
+  # art_standalone
+  - libbsd-dev
+  - libmd-dev
+  - libcap-dev
+  - libelf-dev
+  - libicu-dev
+  - liblz4-dev
+  - liblzma-dev
+  - libssl-dev
+  - libunwind-dev
+  # Qt WebEngine WebView backend (libatl_webview_qt.so, built by atlas'
+  # meson when Qt 6 is present; 24.04-2.x ships Qt 6.10 with WebEngine, so
+  # nothing web-related is bundled in the click anymore)
+  - qt6-base-dev
+  - qt6-base-dev-tools
+  - qt6-declarative-dev
+  - qt6-webengine-dev
+  # source of the xdg-shell integration plugin the device image lacks
+  - qt6-wayland

@@ -1,0 +1,15 @@
+{
+    "name": "mercurygram.nekit",
+    "description": "Telegram (Mercurygram) running natively through atlas (Android Translation Layer)",
+    "architecture": "@CLICK_ARCH@",
+    "title": "Mercurygram",
+    "hooks": {
+        "mercurygram": {
+            "apparmor": "mercurygram.apparmor",
+            "desktop": "mercurygram.desktop"
+        }
+    },
+    "version": "12.8.1.1",
+    "maintainer": "Nikita Ukhrenkov <nikita.ukhrenkov@volla.online>",
+    "framework": "@CLICK_FRAMEWORK@"
+}
