@@ -88,8 +88,8 @@ done_stamp() { touch "${STAMPS}/$1.done"; }
 # disk-constrained.
 WOLFSSL_REV="$(git -C "${ROOT}/wolfssl" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BIONIC_REV="$(git -C "${ROOT}/bionic_translation" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-# the stage carries our patch, so its stamp must change when the patch does
-BIONIC_REV="${BIONIC_REV}-$(sha256sum "${ROOT}/patches/bionic_translation-ut.patch" | cut -c1-8)"
+# the stage carries our patches, so its stamp must change when a patch does
+BIONIC_REV="${BIONIC_REV}-$(cat "${ROOT}/patches/bionic_translation-ut.patch" "${ROOT}/patches/bionic_translation-stdio-glibc.patch" | sha256sum | cut -c1-8)"
 ART_REV="$(git -C "${ROOT}/art_standalone" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 fetch() { # fetch <url> <sha256> <outfile>
@@ -203,6 +203,7 @@ if ! stamp "bionic_translation-${BIONIC_REV}"; then
     log "building bionic_translation"
     rsync -a --delete --exclude=.git "${ROOT}/bionic_translation/" "${BUILD_DIR}/bionic_translation/"
     patch -d "${BUILD_DIR}/bionic_translation" -p1 < "${ROOT}/patches/bionic_translation-ut.patch"
+    patch -d "${BUILD_DIR}/bionic_translation" -p1 < "${ROOT}/patches/bionic_translation-stdio-glibc.patch"
     meson setup "${BUILD_DIR}/bionic_translation/build" "${BUILD_DIR}/bionic_translation" \
         --prefix="${PREFIX}" --libdir=lib --buildtype=release
     ninja -C "${BUILD_DIR}/bionic_translation/build" -j"${JOBS}" install
