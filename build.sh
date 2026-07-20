@@ -333,7 +333,7 @@ strip --strip-unneeded "${INSTALL_DIR}/usr/bin/android-translation-layer" \
 install -m 0644 "${ROOT}/manifest.json"       "${INSTALL_DIR}/manifest.json"
 install -m 0644 "${ROOT}/${APP_HOOK}.apparmor" "${INSTALL_DIR}/"
 install -m 0644 "${ROOT}/${APP_HOOK}.desktop"  "${INSTALL_DIR}/"
-install -m 0644 "${ROOT}/${APP_HOOK}.png"      "${INSTALL_DIR}/"
+install -m 0644 "${ROOT}/${APP_HOOK}.svg"      "${INSTALL_DIR}/"
 install -m 0755 "${ROOT}/${APP_HOOK}.sh"       "${INSTALL_DIR}/"
 
 # --- 10. AOT-compile boot classpath, api-impl and the APK (best effort) -----

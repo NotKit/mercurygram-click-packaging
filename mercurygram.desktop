@@ -2,7 +2,7 @@
 Name=Mercurygram
 Comment=Telegram (Mercurygram) via Android Translation Layer
 Exec=mercurygram.sh %u
-Icon=mercurygram.png
+Icon=mercurygram.svg
 Terminal=false
 Type=Application
 X-Ubuntu-Touch=true
