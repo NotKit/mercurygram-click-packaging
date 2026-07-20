@@ -36,6 +36,26 @@ return-null `LambdaMetafactory` stub → crash. The `art_standalone` pin
 - `art_standalone` @ **98bec995** (D8 desugar support).
 - `bionic_translation` @ ee37eb2, `wolfssl` @ v5.8.2-stable.
 
+## Prebuilt ATL SDK (fast build)
+
+The atl-touch CI publishes a per-commit **ATL SDK** tarball — atlas plus art,
+skia, wolfSSL, GLFW, vixl, libunwind and bionic_translation, i.e. the multi-hour
+part of a build. `build.sh` uses it automatically: it derives `sdk-<atl-touch
+submodule commit>` and, if that release exists **and the `atl-touch` working
+tree is clean**, drops the tree straight into the stage and skips the whole ATL
+compile — only the app-specific steps (APK, stubs, AOT, packaging) run. A dirty
+`atl-touch` tree (i.e. you are hacking on atlas) or a missing release falls back
+to a full source build, so local iteration is never overridden.
+
+    ATL_SDK_TAG=off        clickable build   # force a full source build
+    ATL_SDK_TAG=sdk-<sha>  clickable build   # pin a specific SDK release
+
+The SDK's atlas relocates to the click prefix at runtime (libs via
+`LD_LIBRARY_PATH`, `fonts.xml` resolved relative to the executable), so the
+drop-in tree needs no rebuild. Requires an atlas commit with the relative
+`fonts.xml` fix; older SDK tarballs still work but bake the SDK's own data-dir
+path (cosmetic — glyph loading goes through fontconfig).
+
 ## Build & install
 
     clickable build           # arm64 under qemu (hours on x86_64)

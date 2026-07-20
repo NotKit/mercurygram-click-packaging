@@ -103,9 +103,74 @@ fetch() { # fetch <url> <sha256> <outfile>
     mv "${out}.tmp" "${out}"
 }
 
+# --- 0. prebuilt ATL SDK (skip the whole ATL compile) ---------------------
+# The atl-touch CI publishes a per-commit "ATL SDK" tarball: atlas plus art,
+# skia, wolfSSL, GLFW, vixl, libunwind and bionic_translation — the multi-hour
+# part of a click build. When a release matching the atl-touch submodule commit
+# exists we drop it straight into the stage and skip building any of it; only
+# the app-specific steps (APK, stubs, AOT, packaging) then run.
+#
+# ATL_SDK_TAG:
+#   unset  -> auto: derive sdk-<submodule-sha> and use it when the atl-touch
+#             working tree is clean and the release downloads; otherwise build
+#             atlas from source (so local atlas edits are never overridden).
+#   off    -> always build from source.
+#   sdk-X  -> force that release (explicit; skips the clean-tree check).
+ATL_SDK_REPO="${ATL_SDK_REPO:-NotKit/atl-touch}"
+ATL_SDK_TAG="${ATL_SDK_TAG-auto}"
+USE_SDK=""
+
+if [ -n "${ATL_SDK_TAG}" ] && [ "${ATL_SDK_TAG}" != "off" ] && [ "${ATL_SDK_TAG}" != "none" ]; then
+    tag="${ATL_SDK_TAG}"; forced=1
+    if [ "${ATL_SDK_TAG}" = "auto" ]; then
+        forced=""
+        sha="$(git -C "${ROOT}/atl-touch" rev-parse --short HEAD 2>/dev/null || true)"
+        tag="${sha:+sdk-${sha}}"
+        if [ -z "${tag}" ]; then
+            log "SDK: can't read atl-touch commit — building atlas from source"
+        elif ! git -C "${ROOT}/atl-touch" diff --quiet 2>/dev/null \
+             || ! git -C "${ROOT}/atl-touch" diff --cached --quiet 2>/dev/null; then
+            log "SDK: atl-touch working tree is dirty — building atlas from source"
+            tag=""
+        fi
+    fi
+    if [ -n "${tag}" ]; then
+        archive="${DL}/atl-sdk-${ARCH}-${tag}.tar.zst"
+        url="https://github.com/${ATL_SDK_REPO}/releases/download/${tag}/atl-sdk-${ARCH}.tar.zst"
+        ok=1
+        if [ ! -f "${archive}" ]; then
+            if curl -Lf --retry 3 -o "${archive}.tmp" "${url}"; then
+                mv "${archive}.tmp" "${archive}"
+            else
+                rm -f "${archive}.tmp"; ok=""
+            fi
+        fi
+        if [ -z "${ok}" ]; then
+            [ -n "${forced}" ] && { echo "SDK ${tag} download failed: ${url}" >&2; exit 1; }
+            log "SDK ${tag} not available — building atlas from source"
+        else
+            # verify against the published sidecar (compare the digest only; its
+            # path column is the CI build path, not our filename)
+            if curl -Lf --retry 3 -so "${archive}.sha256" "${url}.sha256"; then
+                want="$(awk '{print $1}' "${archive}.sha256")"
+                have="$(sha256sum "${archive}" | awk '{print $1}')"
+                [ "${want}" = "${have}" ] || { echo "SDK ${tag} checksum mismatch" >&2; exit 1; }
+            fi
+            log "using prebuilt ATL SDK ${tag} (${ATL_SDK_REPO})"
+            rm -rf "${BUILD_DIR}/atl-sdk"
+            mkdir -p "${BUILD_DIR}/atl-sdk"
+            zstd -dc "${archive}" | tar -C "${BUILD_DIR}/atl-sdk" -x
+            # stage the whole prebuilt runtime (atlas + deps); the app-specific
+            # steps below run on top of it
+            rsync -a "${BUILD_DIR}/atl-sdk/usr/" "${PREFIX}/"
+            USE_SDK=1
+        fi
+    fi
+fi
+
 # --- 1. GLFW 3.4 (noble ships 3.3, atlas needs the libdecor init hint) ---
 
-if ! stamp "glfw-${GLFW_VERSION}"; then
+if [ -z "${USE_SDK}" ] && ! stamp "glfw-${GLFW_VERSION}"; then
     log "building GLFW ${GLFW_VERSION}"
     fetch "https://github.com/glfw/glfw/releases/download/${GLFW_VERSION}/glfw-${GLFW_VERSION}.zip" \
           "${GLFW_SHA256}" "glfw-${GLFW_VERSION}.zip"
@@ -129,7 +194,7 @@ fi
 # module (libatl_webview_qt.so) against the system Qt 6.10 of 24.04-2.x;
 # scrub WPE leftovers from cached stages so they never get shipped again.
 
-if ! stamp "wpe-removed"; then
+if [ -z "${USE_SDK}" ] && ! stamp "wpe-removed"; then
     log "scrubbing WPE artifacts from cached stage"
     rm -rf "${PREFIX}"/lib/libWPE* "${PREFIX}"/lib/libwpe* \
            "${PREFIX}"/lib/wpe-webkit-2.0 "${PREFIX}"/libexec/wpe-webkit-2.0 \
@@ -142,7 +207,7 @@ fi
 
 # --- 3. wolfSSL with JNI (distro package has JNI disabled) ---------------
 
-if ! stamp "wolfssl-${WOLFSSL_REV}"; then
+if [ -z "${USE_SDK}" ] && ! stamp "wolfssl-${WOLFSSL_REV}"; then
     log "building wolfSSL"
     rsync -a --delete --exclude=.git "${ROOT}/wolfssl/" "${BUILD_DIR}/wolfssl/"
     (
@@ -163,7 +228,7 @@ fi
 
 # --- 4. vixl (ARM codegen backend for the art compiler; not in noble) ----
 
-if [ "${ARCH}" = "arm64" ] && ! stamp "vixl-${VIXL_VERSION}"; then
+if [ -z "${USE_SDK}" ] && [ "${ARCH}" = "arm64" ] && ! stamp "vixl-${VIXL_VERSION}"; then
     log "building vixl ${VIXL_VERSION}"
     fetch "https://github.com/Linaro/vixl/archive/refs/tags/${VIXL_VERSION}.tar.gz" \
           "${VIXL_SHA256}" "vixl-${VIXL_VERSION}.tar.gz"
@@ -180,7 +245,7 @@ fi
 
 # --- 4b. libunwind >= 1.8 (bionic_translation requires it; noble has 1.6) --
 
-if ! stamp "libunwind-${LIBUNWIND_VERSION}"; then
+if [ -z "${USE_SDK}" ] && ! stamp "libunwind-${LIBUNWIND_VERSION}"; then
     log "building libunwind ${LIBUNWIND_VERSION}"
     fetch "https://github.com/libunwind/libunwind/releases/download/v${LIBUNWIND_VERSION}/libunwind-${LIBUNWIND_VERSION}.tar.gz" \
           "${LIBUNWIND_SHA256}" "libunwind-${LIBUNWIND_VERSION}.tar.gz"
@@ -199,7 +264,7 @@ fi
 
 # --- 5. bionic_translation ------------------------------------------------
 
-if ! stamp "bionic_translation-${BIONIC_REV}"; then
+if [ -z "${USE_SDK}" ] && ! stamp "bionic_translation-${BIONIC_REV}"; then
     log "building bionic_translation"
     rsync -a --delete --exclude=.git "${ROOT}/bionic_translation/" "${BUILD_DIR}/bionic_translation/"
     patch -d "${BUILD_DIR}/bionic_translation" -p1 < "${ROOT}/patches/bionic_translation-ut.patch"
@@ -219,19 +284,22 @@ fi
 # art_standalone pin honors `make ... D8=<launcher>`; wire up a d8 over the
 # prebuilt r8 jar (pure Java, so it runs fine under the arm64 container's JDK).
 
-fetch "${R8_URL:-https://maven.google.com/com/android/tools/r8/${R8_VERSION}/r8-${R8_VERSION}.jar}" \
-      "${R8_SHA256}" "r8-${R8_VERSION}.jar"
-D8="${PREFIX}/bin/d8"
-mkdir -p "${PREFIX}/bin"
-cat > "${D8}" <<EOF
+# d8 is only needed to build art's boot jars; the SDK ships them prebuilt.
+if [ -z "${USE_SDK}" ]; then
+    fetch "${R8_URL:-https://maven.google.com/com/android/tools/r8/${R8_VERSION}/r8-${R8_VERSION}.jar}" \
+          "${R8_SHA256}" "r8-${R8_VERSION}.jar"
+    D8="${PREFIX}/bin/d8"
+    mkdir -p "${PREFIX}/bin"
+    cat > "${D8}" <<EOF
 #!/bin/sh
 exec java -Xmx2G -cp "${DL}/r8-${R8_VERSION}.jar" com.android.tools.r8.D8 "\$@"
 EOF
-chmod +x "${D8}"
+    chmod +x "${D8}"
+fi
 
 # --- 6. art_standalone (ART runtime, dex2oat, dx, boot classpath) ---------
 
-if ! stamp "art_standalone-${ART_REV}-d8${R8_VERSION}"; then
+if [ -z "${USE_SDK}" ] && ! stamp "art_standalone-${ART_REV}-d8${R8_VERSION}"; then
     log "building art_standalone (self-hosted AOSP frankenbuild, d8-desugared boot jars)"
     rsync -a --delete --exclude=.git "${ROOT}/art_standalone/" "${BUILD_DIR}/art_standalone/"
     # clickable exports ARCH=arm64, but art's envsetup.mk expects uname-style
@@ -259,20 +327,23 @@ if ! stamp "opensles-stub-$(sha256sum "${ROOT}/stubs/opensles_stub.c" | cut -c1-
 fi
 
 # --- 7. atlas ---------------------------------------------------------------
+# Skipped when the prebuilt SDK is used (atlas is already staged in PREFIX).
 
-# Always rsync so source changes in the submodule are picked up; the skia
-# subproject clone (fetched by meson wrap on first setup) is preserved.
-log "building atlas"
-rsync -a --delete \
-    --exclude=.git --exclude=/builddir --exclude=/subprojects/skia \
-    "${ROOT}/atl-touch/" "${BUILD_DIR}/atlas-src/"
-if [ ! -f "${BUILD_DIR}/atlas-build/build.ninja" ]; then
-    meson setup "${BUILD_DIR}/atlas-build" "${BUILD_DIR}/atlas-src" \
-        --prefix="${CLICK_PREFIX}" --libdir=lib --buildtype=release
+if [ -z "${USE_SDK}" ]; then
+    # Always rsync so source changes in the submodule are picked up; the skia
+    # subproject clone (fetched by meson wrap on first setup) is preserved.
+    log "building atlas"
+    rsync -a --delete \
+        --exclude=.git --exclude=/builddir --exclude=/subprojects/skia \
+        "${ROOT}/atl-touch/" "${BUILD_DIR}/atlas-src/"
+    if [ ! -f "${BUILD_DIR}/atlas-build/build.ninja" ]; then
+        meson setup "${BUILD_DIR}/atlas-build" "${BUILD_DIR}/atlas-src" \
+            --prefix="${CLICK_PREFIX}" --libdir=lib --buildtype=release
+    fi
+    ninja -C "${BUILD_DIR}/atlas-build" -j"${JOBS}"
+    rm -rf "${BUILD_DIR}/atlas-dest"
+    DESTDIR="${BUILD_DIR}/atlas-dest" ninja -C "${BUILD_DIR}/atlas-build" install
 fi
-ninja -C "${BUILD_DIR}/atlas-build" -j"${JOBS}"
-rm -rf "${BUILD_DIR}/atlas-dest"
-DESTDIR="${BUILD_DIR}/atlas-dest" ninja -C "${BUILD_DIR}/atlas-build" install
 
 # --- 8. Mercurygram APK -----------------------------------------------------
 
@@ -283,19 +354,29 @@ fetch "${APK_URL}" "${APK_SHA256}" "Mercurygram-${MERCURYGRAM_VERSION}-${APK_ABI
 log "assembling click tree in ${INSTALL_DIR}"
 mkdir -p "${INSTALL_DIR}/usr"
 
-# atlas (built with the click runtime prefix)
-cp -a "${BUILD_DIR}/atlas-dest${CLICK_PREFIX}/." "${INSTALL_DIR}/usr/"
+if [ -n "${USE_SDK}" ]; then
+    # atlas + all deps come prebuilt in the SDK (already staged in PREFIX, plus
+    # the opensles stub); drop the whole runtime tree in — bin/, lib/, libexec/,
+    # share/atl (fonts.xml), share/bionic_translation, ...
+    rsync -a \
+        --exclude='pkgconfig' --exclude='cmake' \
+        --exclude='*.a' --exclude='*.la' \
+        "${PREFIX}/" "${INSTALL_DIR}/usr/"
+else
+    # atlas (built with the click runtime prefix)
+    cp -a "${BUILD_DIR}/atlas-dest${CLICK_PREFIX}/." "${INSTALL_DIR}/usr/"
 
-# staged runtime: art, boot classpath, wolfssl, glfw, bionic libs, ...
-rsync -a \
-    --exclude='pkgconfig' --exclude='cmake' \
-    --exclude='*.a' --exclude='*.la' \
-    "${PREFIX}/lib/" "${INSTALL_DIR}/usr/lib/"
-if [ -d "${PREFIX}/libexec" ]; then
-    rsync -a "${PREFIX}/libexec/" "${INSTALL_DIR}/usr/libexec/"
-fi
-if [ -d "${PREFIX}/share/bionic_translation" ]; then
-    rsync -a "${PREFIX}/share/bionic_translation" "${INSTALL_DIR}/usr/share/"
+    # staged runtime: art, boot classpath, wolfssl, glfw, bionic libs, ...
+    rsync -a \
+        --exclude='pkgconfig' --exclude='cmake' \
+        --exclude='*.a' --exclude='*.la' \
+        "${PREFIX}/lib/" "${INSTALL_DIR}/usr/lib/"
+    if [ -d "${PREFIX}/libexec" ]; then
+        rsync -a "${PREFIX}/libexec/" "${INSTALL_DIR}/usr/libexec/"
+    fi
+    if [ -d "${PREFIX}/share/bionic_translation" ]; then
+        rsync -a "${PREFIX}/share/bionic_translation" "${INSTALL_DIR}/usr/share/"
+    fi
 fi
 # extra bionic library-override maps for Telegram's libtmessages (libm ->
 # libm.so.6, libjnigraphics -> libandroid.so.0); merged with the base cfg
