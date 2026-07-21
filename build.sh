@@ -91,6 +91,7 @@ BIONIC_REV="$(git -C "${ROOT}/bionic_translation" rev-parse --short HEAD 2>/dev/
 # the stage carries our patches, so its stamp must change when a patch does
 BIONIC_REV="${BIONIC_REV}-$(cat "${ROOT}/patches/bionic_translation-ut.patch" "${ROOT}/patches/bionic_translation-stdio-glibc.patch" | sha256sum | cut -c1-8)"
 ART_REV="$(git -C "${ROOT}/art_standalone" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+ART_REV="${ART_REV}-$(sha256sum "${ROOT}/patches/art_standalone-d8.patch" | cut -c1-8)"
 
 fetch() { # fetch <url> <sha256> <outfile>
     local url="$1" sha="$2" out="${DL}/$3"
@@ -281,8 +282,9 @@ fi
 # libcore with old `dx`, so those pass through as live invoke-custom hitting
 # AOSP's return-null LambdaMetafactory stub and crash. Desugaring core-oj +
 # core-libart with d8 at dex time (what AOSP itself does) fixes it. The
-# art_standalone pin honors `make ... D8=<launcher>`; wire up a d8 over the
-# prebuilt r8 jar (pure Java, so it runs fine under the arm64 container's JDK).
+# `make ... D8=<launcher>` option comes from patches/art_standalone-d8.patch;
+# wire up a d8 over the prebuilt r8 jar (pure Java, so it runs fine under the
+# arm64 container's JDK).
 
 # d8 is only needed to build art's boot jars; the SDK ships them prebuilt.
 if [ -z "${USE_SDK}" ]; then
@@ -302,6 +304,7 @@ fi
 if [ -z "${USE_SDK}" ] && ! stamp "art_standalone-${ART_REV}-d8${R8_VERSION}"; then
     log "building art_standalone (self-hosted AOSP frankenbuild, d8-desugared boot jars)"
     rsync -a --delete --exclude=.git "${ROOT}/art_standalone/" "${BUILD_DIR}/art_standalone/"
+    patch -d "${BUILD_DIR}/art_standalone" -p1 < "${ROOT}/patches/art_standalone-d8.patch"
     # clickable exports ARCH=arm64, but art's envsetup.mk expects uname-style
     # values (aarch64) and maps 'arm64' to 32-bit arm — override explicitly.
     # D8=<launcher> makes the boot jars desugar lambdas like upstream AOSP.

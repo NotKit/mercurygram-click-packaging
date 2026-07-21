@@ -23,17 +23,14 @@ The maps live in `stubs/mercurygram-bionic.cfg`, installed to
 
 Telegram also triggers **core-oj-internal lambdas** (streams/Collectors), which
 art's `dx`-dexed libcore turns into live `invoke-custom` against AOSP's
-return-null `LambdaMetafactory` stub → crash. The `art_standalone` pin
-(98bec995) honors `make ... D8=<launcher>`; `build.sh` fetches the pinned r8 jar
+return-null `LambdaMetafactory` stub → crash. `patches/art_standalone-d8.patch`
+adds a `make ... D8=<launcher>` option; `build.sh` fetches the pinned r8 jar
 (8.13.19) and desugars `core-oj` + `core-libart` with d8, exactly as AOSP does.
 
 ## Pins
 
-- `atl-touch` @ **fab5b775** — includes every Telegram-under-ATL fix (BitmapShader,
-  ImageView.setColorFilter, 9-patch color, emoji panel, send, login chain).
-  **NOTE: this commit is local-only, not yet pushed to NotKit/atl-touch** — CI
-  (`.github/`) will fail until it is pushed.
-- `art_standalone` @ **98bec995** (D8 desugar support).
+- `atl-touch` @ NotKit/atl-touch master (every Telegram-under-ATL fix).
+- `art_standalone` @ **e78bf689** upstream + `patches/art_standalone-d8.patch`.
 - `bionic_translation` @ ee37eb2, `wolfssl` @ v5.8.2-stable.
 
 ## Prebuilt ATL SDK (fast build)
