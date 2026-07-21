@@ -22,6 +22,11 @@ export JAVA_HOME="${PKG_ROOT}/usr/share/java_home"
 # this Telegram's libtmessages.49.so fails to link its native deps.
 export XDG_DATA_DIRS="${PKG_ROOT}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 
+# Lomiri never marks the app surface "maximized", so ATL's heuristic would
+# report multi-window; Telegram then skips hiding the keyboard when it opens the
+# emoji panel and never stores the keyboard height it measured.
+export ATL_MULTI_WINDOW=0
+
 # Telegram opens in-app browsers / bot web apps in a WebView; use the Qt
 # WebEngine backend against the system Qt 6.10. Qt's wayland QPA needs a
 # shell-integration plugin, which the device image lacks — the click bundles
