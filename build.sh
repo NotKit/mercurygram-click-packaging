@@ -91,7 +91,7 @@ BIONIC_REV="$(git -C "${ROOT}/bionic_translation" rev-parse --short HEAD 2>/dev/
 # the stage carries our patches, so its stamp must change when a patch does
 BIONIC_REV="${BIONIC_REV}-$(cat "${ROOT}/patches/bionic_translation-ut.patch" "${ROOT}/patches/bionic_translation-stdio-glibc.patch" | sha256sum | cut -c1-8)"
 ART_REV="$(git -C "${ROOT}/art_standalone" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-ART_REV="${ART_REV}-$(sha256sum "${ROOT}/patches/art_standalone-d8.patch" | cut -c1-8)"
+ART_REV="${ART_REV}-$(cat "${ROOT}/patches/art_standalone-d8.patch" "${ROOT}/patches/art_standalone-imt-object-dispatch.patch" | sha256sum | cut -c1-8)"
 
 fetch() { # fetch <url> <sha256> <outfile>
     local url="$1" sha="$2" out="${DL}/$3"
@@ -305,6 +305,9 @@ if [ -z "${USE_SDK}" ] && ! stamp "art_standalone-${ART_REV}-d8${R8_VERSION}"; t
     log "building art_standalone (self-hosted AOSP frankenbuild, d8-desugared boot jars)"
     rsync -a --delete --exclude=.git "${ROOT}/art_standalone/" "${BUILD_DIR}/art_standalone/"
     patch -d "${BUILD_DIR}/art_standalone" -p1 < "${ROOT}/patches/art_standalone-d8.patch"
+    # interface calls to Object methods dispatched to the first class resolved
+    # (GCam died on every frame-drop log line); AOSP emits a virtual call
+    patch -d "${BUILD_DIR}/art_standalone" -p1 < "${ROOT}/patches/art_standalone-imt-object-dispatch.patch"
     # clickable exports ARCH=arm64, but art's envsetup.mk expects uname-style
     # values (aarch64) and maps 'arm64' to 32-bit arm — override explicitly.
     # D8=<launcher> makes the boot jars desugar lambdas like upstream AOSP.

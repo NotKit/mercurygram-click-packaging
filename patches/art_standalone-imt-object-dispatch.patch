@@ -1,0 +1,42 @@
+diff --git a/art/compiler/optimizing/instruction_builder.cc b/art/compiler/optimizing/instruction_builder.cc
+index 5e7b5752..b77f0bbe 100644
+--- a/art/compiler/optimizing/instruction_builder.cc
++++ b/art/compiler/optimizing/instruction_builder.cc
+@@ -929,6 +929,20 @@ bool HInstructionBuilder::BuildInvoke(const Instruction& instruction,
+     return HandleInvoke(invoke, operands, shorty, /* is_unresolved= */ true);
+   }
+ 
++  // An invoke-interface can resolve to a java.lang.Object method (toString,
++  // hashCode, equals called through an interface reference). Object methods
++  // have no IMT slot: the slot the hash lands on holds the runtime's shared
++  // "unimplemented" method, and the conflict trampoline then caches the first
++  // resolution in that shared method's table, so every later receiver of any
++  // class is dispatched to it. Emit a virtual call instead, as upstream does;
++  // Object's vtable indices are the same in every class.
++  if (invoke_type == kInterface) {
++    ScopedObjectAccess soa(Thread::Current());
++    if (resolved_method->GetDeclaringClass()->IsObjectClass()) {
++      invoke_type = kVirtual;
++    }
++  }
++
+   // Replace calls to String.<init> with StringFactory.
+   if (IsStringConstructor(resolved_method)) {
+     uint32_t string_init_entry_point = WellKnownClasses::StringInitToEntryPoint(resolved_method);
+diff --git a/art/runtime/class_linker.cc b/art/runtime/class_linker.cc
+index 62a28948..22764cf2 100644
+--- a/art/runtime/class_linker.cc
++++ b/art/runtime/class_linker.cc
+@@ -6648,7 +6648,11 @@ ArtMethod* ClassLinker::AddMethodToConflictTable(ObjPtr<mirror::Class> klass,
+   ImtConflictTable* current_table = conflict_method->GetImtConflictTable(kRuntimePointerSize);
+   Runtime* const runtime = Runtime::Current();
+   LinearAlloc* linear_alloc = GetAllocatorForClassLoader(klass->GetClassLoader());
+-  bool new_entry = conflict_method == runtime->GetImtConflictMethod() || force_new_conflict_method;
++  // The unimplemented method is shared by every class as well: a table hung
++  // off it would be consulted by all of them.
++  bool new_entry = conflict_method == runtime->GetImtConflictMethod() ||
++                   conflict_method == runtime->GetImtUnimplementedMethod() ||
++                   force_new_conflict_method;
+ 
+   // Create a new entry if the existing one is the shared conflict method.
+   ArtMethod* new_conflict_method = new_entry
