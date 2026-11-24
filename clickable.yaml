@@ -58,6 +58,7 @@ dependencies_target:
   - libgudev-1.0-dev
   - libopenxr-dev
   - libportal-dev
+  - libcontent-hub-glib-dev
   - libsqlite3-dev
   - libvulkan-dev
   - libwayland-dev
